@@ -49,6 +49,7 @@ export async function listarDispositivos(filtros: FiltrosDispositivos): Promise<
   if (filtros.search) params.search = filtros.search; // backend lo soporta
   if (filtros.orden) params.orden = filtros.orden; // alias de sort_by
   if (filtros.direccion) params.direccion = filtros.direccion; // alias de sort_dir
+  if (typeof filtros.activo === 'boolean') params.activo = filtros.activo;
   if (filtros.page) params.page = filtros.page;
   if (filtros.per_page) params.per_page = filtros.per_page;
   const { data } = await api.get('/dispositivos', { params });
@@ -64,12 +65,12 @@ export async function listarDispositivos(filtros: FiltrosDispositivos): Promise<
   };
 }
 
-export async function crearDispositivo(payload: { mac: string; nombre: string; ip?: string | null }) {
+export async function crearDispositivo(payload: { mac: string; nombre: string; ip?: string | null; activo?: boolean }) {
   const { data } = await api.post('/dispositivos', payload);
   return data as Dispositivo;
 }
 
-export async function actualizarDispositivo(mac: string, payload: Partial<{ nombre: string; ip: string | null }>) {
+export async function actualizarDispositivo(mac: string, payload: Partial<{ nombre: string; ip: string | null; activo: boolean }>) {
   const { data } = await api.put(`/dispositivos/${mac}`, payload);
   return data as Dispositivo;
 }

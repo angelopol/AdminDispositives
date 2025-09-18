@@ -39,12 +39,12 @@ export function useDevices(initial: Partial<FiltrosDispositivos> = {}) {
     }
   };
 
-  const crear = async (payload: { mac: string; nombre: string; ip?: string | null }) => {
+  const crear = async (payload: { mac: string; nombre: string; ip?: string | null; activo?: boolean }) => {
     await crearDispositivo(payload);
     await cargar();
   };
 
-  const actualizar = async (mac: string, payload: Partial<{ nombre: string; ip: string | null }>) => {
+  const actualizar = async (mac: string, payload: Partial<{ nombre: string; ip: string | null; activo: boolean }>) => {
     await actualizarDispositivo(mac, payload);
     await cargar();
   };

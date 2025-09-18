@@ -9,20 +9,20 @@ import { LinkForm } from './components/LinkForm';
 
 export const DeviceManager: React.FC = () => {
   const { dispositivos, cargando, error, meta, filtros, setFiltros, crear, eliminar, seleccionar, seleccionado, cambiarEnlace, actualizar } = useDevices();
-  const [form, setForm] = useState({ mac: '', nombre: '', ip: '' });
+  const [form, setForm] = useState({ mac: '', nombre: '', ip: '', activo: true });
   const [editMac, setEditMac] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<{ nombre: string; ip: string | null }>({ nombre: '', ip: '' });
+  const [editForm, setEditForm] = useState<{ nombre: string; ip: string | null; activo?: boolean }>({ nombre: '', ip: '', activo: true });
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await crear({ mac: form.mac, nombre: form.nombre, ip: form.ip || null });
-    setForm({ mac: '', nombre: '', ip: '' });
+  await crear({ mac: form.mac, nombre: form.nombre, ip: form.ip || null, activo: form.activo });
+  setForm({ mac: '', nombre: '', ip: '', activo: true });
   };
 
   const submitEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editMac) return;
-    await actualizar(editMac, { nombre: editForm.nombre, ip: editForm.ip || null });
+  await actualizar(editMac, { nombre: editForm.nombre, ip: editForm.ip || null, activo: editForm.activo });
     setEditMac(null);
   };
 
@@ -31,7 +31,7 @@ export const DeviceManager: React.FC = () => {
       setEditMac(null);
     } else {
       setEditMac(d.mac);
-      setEditForm({ nombre: d.nombre, ip: d.ip });
+  setEditForm({ nombre: d.nombre, ip: d.ip, activo: d.activo });
     }
   };
 
@@ -61,6 +61,10 @@ export const DeviceManager: React.FC = () => {
     return filtros.direccion === 'asc' ? <span>▲</span> : <span>▼</span>;
   };
 
+  const quickToggleActivo = async (mac: string, current: boolean) => {
+    await actualizar(mac, { activo: !current });
+  };
+
   // Persistencia querystring (search, orden, direccion, page)
   useEffect(() => {
     const params = new URLSearchParams();
@@ -68,10 +72,11 @@ export const DeviceManager: React.FC = () => {
     if (filtros.orden) params.set('orden', filtros.orden);
     if (filtros.direccion) params.set('dir', filtros.direccion);
     if (filtros.page) params.set('page', String(filtros.page));
+    if (typeof (filtros as any).activo === 'boolean') params.set('activo', String((filtros as any).activo));
     const qs = params.toString();
     const newUrl = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
     window.history.replaceState(null, '', newUrl);
-  }, [filtros.search, filtros.orden, filtros.direccion, filtros.page]);
+  }, [filtros.search, filtros.orden, filtros.direccion, filtros.page, (filtros as any).activo]);
 
   // Inicializar desde querystring en primer render
   useEffect(() => {
@@ -80,7 +85,10 @@ export const DeviceManager: React.FC = () => {
     if (params.get('search')) init.search = params.get('search')!;
     if (params.get('orden')) init.orden = params.get('orden')!;
     if (params.get('dir')) init.direccion = params.get('dir')!;
-    if (params.get('page')) init.page = parseInt(params.get('page')!, 10) || 1;
+  if (params.get('page')) init.page = parseInt(params.get('page')!, 10) || 1;
+  const a = params.get('activo');
+  if (a === 'true') init.activo = true;
+  else if (a === 'false') init.activo = false;
     const has = Object.keys(init).length > 0;
     if (has) setFiltros(f => ({ ...f, ...init }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -102,6 +110,8 @@ export const DeviceManager: React.FC = () => {
           direccion={filtros.direccion || 'asc'}
           setOrden={(v) => setFiltros({ ...filtros, orden: v as any })}
           setDireccion={(v) => setFiltros({ ...filtros, direccion: v })}
+          activo={filtros.activo}
+          setActivo={(v) => setFiltros({ ...filtros, activo: v, page: 1 })}
         />
         <DeviceTable
           dispositivos={dispositivos}
@@ -119,6 +129,7 @@ export const DeviceManager: React.FC = () => {
           onSubmitEdit={() => submitEdit(new Event('submit') as any)}
           onDelete={eliminar}
           setEditForm={setEditForm}
+          onQuickToggleActivo={quickToggleActivo}
         />
       </section>
 

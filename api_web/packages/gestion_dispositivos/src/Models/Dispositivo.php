@@ -21,6 +21,11 @@ class Dispositivo extends Model
         'mac',
         'ip',
         'enlace_mac',
+        'activo',
+    ];
+
+    protected $casts = [
+        'activo' => 'boolean',
     ];
 
     /**

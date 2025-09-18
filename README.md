@@ -52,6 +52,12 @@ Endpoints principales:
 	- PUT `/api/keys/{id}` — actualizar (activar/desactivar, etc.).
 	- DELETE `/api/keys/{id}` — eliminar.
 
+Utilidades del paquete:
+
+- Verificación de token por dispositivo: `Ezparking\GestionDispositivos\Security\DeviceTokenVerifier::verify($mac, $token) : bool`
+	- Reglas: el dispositivo debe existir y estar activo; el token debe estar activo y vinculado a `dispositivo_mac`.
+	- Devuelve `true` si todo es válido; `false` en caso contrario.
+
 Formato de respuesta típico (listado):
 
 ```json

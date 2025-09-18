@@ -4,6 +4,9 @@ use Illuminate\Support\Facades\Route;
 use Ezparking\GestionDispositivos\Http\Controllers\DispositivoController;
 use Ezparking\GestionDispositivos\Http\Controllers\Security\ApiKeyController;
 
+// Consulta de relaciones por token de dispositivo (no requiere api_key header)
+Route::post('/dispositivos/relaciones/consulta', [DispositivoController::class, 'relacionesPorToken']);
+
 // Rutas de gestión de API keys protegidas por llave admin
 Route::middleware(['api_key.auth:admin'])->prefix('keys')->group(function(){
     Route::get('/', [ApiKeyController::class, 'index']);

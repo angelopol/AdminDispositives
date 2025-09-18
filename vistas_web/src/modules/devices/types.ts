@@ -2,6 +2,7 @@ export interface Dispositivo {
   mac: string;
   nombre: string;
   ip: string | null;
+  activo: boolean;
   enlace_mac?: string | null; // oculto en API final, pero útil internamente
   enlace?: Dispositivo | null;
   enlazado_por_count?: number; // conteo de dispositivos que lo enlazan (index)
@@ -25,8 +26,9 @@ export interface PaginacionResponse<T> {
 
 export interface FiltrosDispositivos {
   search?: string;
-  orden?: 'nombre' | 'mac' | 'ip';
+  orden?: 'nombre' | 'mac' | 'ip' | 'activo';
   direccion?: 'asc' | 'desc';
   page?: number;
   per_page?: number;
+  activo?: boolean; // undefined = todos, true/false = filtrar
 }

@@ -94,6 +94,17 @@ class ApiKeyController extends Controller
     public function destroy($id)
     {
         $key = ApiKey::findOrFail($id);
+        // Si está vinculada a un dispositivo existente, no permitir borrar
+        if (!empty($key->dispositivo_mac)) {
+            // Verificar que el dispositivo exista aún
+            $exists = \Ezparking\GestionDispositivos\Models\Dispositivo::where('mac', $key->dispositivo_mac)->exists();
+            if ($exists) {
+                return response()->json([
+                    'ok' => false,
+                    'message' => 'No se puede borrar un token vinculado a un dispositivo existente. Elimina el dispositivo primero.'
+                ], 409);
+            }
+        }
         $key->delete();
         return response()->json(['ok' => true, 'message' => 'Api key deleted']);
     }

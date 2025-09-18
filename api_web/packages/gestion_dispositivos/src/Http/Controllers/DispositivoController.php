@@ -3,9 +3,13 @@
 namespace Ezparking\GestionDispositivos\Http\Controllers;
 
 use Ezparking\GestionDispositivos\Models\Dispositivo;
+use Ezparking\GestionDispositivos\Models\ApiKey;
+use Ezparking\GestionDispositivos\Security\DeviceTokenVerifier;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 
 class DispositivoController extends Controller
 {
@@ -19,6 +23,7 @@ class DispositivoController extends Controller
             'mac' => $d->mac,
             'nombre' => $d->nombre,
             'ip' => $d->ip,
+            'activo' => (bool)($d->activo ?? true),
             'enlace_mac' => $d->enlace_mac,
             'enlace' => $d->enlace ? [
                 'mac' => $d->enlace->mac,
@@ -43,10 +48,11 @@ class DispositivoController extends Controller
             'mac_prefijo' => 'nullable|string|max:17',
             'search' => 'nullable|string|max:255',
             'per_page' => 'nullable|integer|min:1|max:100',
-            'sort_by' => 'nullable|string|in:mac,nombre,created_at,ip',
+            'sort_by' => 'nullable|string|in:mac,nombre,created_at,ip,activo',
             'sort_dir' => 'nullable|string|in:asc,desc',
-            'orden' => 'nullable|string|in:mac,nombre,created_at,ip', // alias
+            'orden' => 'nullable|string|in:mac,nombre,created_at,ip,activo', // alias
             'direccion' => 'nullable|string|in:asc,desc', // alias
+            'activo' => 'nullable|boolean',
         ]);
 
         $query = Dispositivo::query()->with('enlace')->withCount('enlazadoPor');
@@ -57,7 +63,7 @@ class DispositivoController extends Controller
             $query->where('mac', 'LIKE', $pref . '%');
         }
 
-        // Búsqueda general (nombre, mac, ip)
+    // Búsqueda general (nombre, mac, ip)
         if (!empty($validated['search'])) {
             $term = trim($validated['search']);
             $query->where(function ($q) use ($term) {
@@ -68,11 +74,16 @@ class DispositivoController extends Controller
             });
         }
 
+        // Filtro por estado activo
+        if (array_key_exists('activo', $validated) && $validated['activo'] !== null) {
+            $query->where('activo', (bool)$validated['activo']);
+        }
+
         $sortBy = $validated['sort_by'] ?? $validated['orden'] ?? 'mac';
         $sortDir = $validated['sort_dir'] ?? $validated['direccion'] ?? 'asc';
 
         // Aseguramos que el campo ip existe aunque no estaba en validación legacy
-        if (!in_array($sortBy, ['mac', 'nombre', 'created_at', 'ip'], true)) {
+        if (!in_array($sortBy, ['mac', 'nombre', 'created_at', 'ip', 'activo'], true)) {
             $sortBy = 'mac';
         }
         if (!in_array($sortDir, ['asc', 'desc'], true)) {
@@ -135,6 +146,7 @@ class DispositivoController extends Controller
             'mac' => ['required','string','max:255',"unique:dispositivos,mac","regex:$macRegex"],
             'ip' => 'nullable|ip',
             'enlace' => [ 'nullable','string','exists:dispositivos,mac',"regex:$macRegex" ],
+            'activo' => 'nullable|boolean',
         ]);
 
         return DB::transaction(function () use ($data) {
@@ -142,6 +154,9 @@ class DispositivoController extends Controller
             $dispositivo->nombre = $data['nombre'];
             $dispositivo->mac = strtoupper($data['mac']);
             $dispositivo->ip = $data['ip'] ?? null;
+            if (array_key_exists('activo', $data)) {
+                $dispositivo->activo = (bool)$data['activo'];
+            }
 
             if (!empty($data['enlace'])) {
                 $enlace = Dispositivo::where('mac', strtoupper($data['enlace']))->first();
@@ -152,9 +167,28 @@ class DispositivoController extends Controller
             $dispositivo->save();
             $dispositivo->refresh();
 
+            // Generar token asociado al dispositivo (no admin)
+            $plain = bin2hex(random_bytes(24));
+            $key = new ApiKey();
+            $key->name = 'device:' . $dispositivo->mac;
+            $key->key_hash = Hash::make($plain);
+            $key->plain_preview = substr($plain, 0, 8);
+            $key->is_admin = false;
+            $key->active = true;
+            // Asociar a dispositivo si existe la columna
+            if (Schema::hasColumn('api_keys', 'dispositivo_mac')) {
+                $key->dispositivo_mac = $dispositivo->mac;
+            }
+            $key->save();
+
             return response()->json([
                 'ok' => true,
                 'dispositivo' => $this->formatDispositivo($dispositivo),
+                'token' => [
+                    'plain' => $plain, // mostrar solo una vez
+                    'preview' => $key->plain_preview,
+                    'id' => $key->id,
+                ],
             ], 201);
         });
     }
@@ -171,6 +205,7 @@ class DispositivoController extends Controller
         $data = $request->validate([
             'ip' => 'nullable|ip',
             'enlace' => [ 'nullable','string','exists:dispositivos,mac',"regex:$macRegex" ],
+            'activo' => 'nullable|boolean',
         ]);
 
         if (array_key_exists('ip', $data)) {
@@ -184,6 +219,9 @@ class DispositivoController extends Controller
                 $dispositivo->enlace_mac = null; // eliminar enlace si null
             }
         }
+        if (array_key_exists('activo', $data)) {
+            $dispositivo->activo = (bool)$data['activo'];
+        }
         $dispositivo->save();
 
         return response()->json([
@@ -196,6 +234,10 @@ class DispositivoController extends Controller
     public function eliminar($mac)
     {
     $dispositivo = Dispositivo::where('mac', strtoupper($mac))->firstOrFail();
+        // Desactivar claves vinculadas
+        if (Schema::hasColumn('api_keys', 'dispositivo_mac')) {
+            ApiKey::where('dispositivo_mac', $dispositivo->mac)->update(['active' => false]);
+        }
         $dispositivo->delete();
 
         return response()->json([
@@ -249,6 +291,42 @@ class DispositivoController extends Controller
             'ip' => $d->ip,
             'enlace_mac' => $d->enlace_mac,
         ])->values();
+        return response()->json([
+            'ok' => true,
+            'dispositivo' => $payload,
+        ]);
+    }
+
+    /**
+     * Consulta pública de relaciones por mac + token del dispositivo (solo lectura).
+     * Body: { mac: string, token: string }
+     */
+    public function relacionesPorToken(Request $request)
+    {
+        $data = $request->validate([
+            'mac' => ['required','string','max:255'],
+            'token' => ['required','string','min:8'],
+        ]);
+
+        $mac = $data['mac'];
+        $token = $data['token'];
+
+        if (!DeviceTokenVerifier::verify($mac, $token)) {
+            return response()->json([
+                'ok' => false,
+                'mensaje' => 'MAC o token inválidos, o dispositivo inactivo',
+            ], 403);
+        }
+
+        $dispositivo = Dispositivo::with(['enlace','enlazadoPor'])->where('mac', strtoupper($mac))->firstOrFail();
+        $payload = $this->formatDispositivo($dispositivo);
+        $payload['enlazado_por'] = $dispositivo->enlazadoPor->map(fn($d) => [
+            'mac' => $d->mac,
+            'nombre' => $d->nombre,
+            'ip' => $d->ip,
+            'enlace_mac' => $d->enlace_mac,
+        ])->values();
+
         return response()->json([
             'ok' => true,
             'dispositivo' => $payload,
