@@ -116,11 +116,59 @@ class Maestro(DispositivoClienteBase):
             disp = payload.get("dispositivo") or {}
             enlace = disp.get("enlace") if isinstance(disp, dict) else None
             self.enlace_ip = enlace.get("ip") if isinstance(enlace, dict) else None
+            # Guardar/actualizar enlace.txt si obtuvimos IP
+            if self.enlace_ip:
+                self._guardar_enlace_txt(self.enlace_ip)
             return True
         except Exception:
             # No interrumpir el flujo del cliente por errores de red
             self.enlace_ip = None
             return False
+
+    # ---------- Fallback offline: enlace.txt ----------
+    def _ruta_enlace_txt(self) -> str:
+        """Ruta al archivo enlace.txt (junto a este módulo)."""
+        try:
+            base_dir = os.path.dirname(__file__)
+        except Exception:
+            base_dir = os.getcwd()
+        return os.path.join(base_dir, "enlace.txt")
+
+    def _guardar_enlace_txt(self, ip: str) -> None:
+        try:
+            with open(self._ruta_enlace_txt(), "w", encoding="utf-8") as f:
+                f.write((ip or "").strip() + "\n")
+        except Exception:
+            # No bloquear si no se puede escribir
+            pass
+
+    def cargar_enlace_desde_txt(self) -> bool:
+        """Lee enlace.txt y actualiza self.enlace_ip si es válido."""
+        try:
+            path = self._ruta_enlace_txt()
+            if not os.path.isfile(path):
+                return False
+            with open(path, "r", encoding="utf-8") as f:
+                contenido = f.read().strip()
+            if contenido:
+                self.enlace_ip = contenido
+                return True
+            return False
+        except Exception:
+            return False
+
+    def obtener_enlace_ip(self) -> bool:
+        """Estrategia dual: API si hay conectividad; si falla, usar enlace.txt.
+
+        - Si la consulta a la API funciona, guarda/actualiza enlace.txt con la IP.
+        - Si no, intenta leer enlace.txt. Devuelve True si logra establecer enlace_ip.
+        """
+        # Intento vía API
+        ok_api = self.actualizar_enlace_info()
+        if ok_api and self.enlace_ip:
+            return True
+        # Fallback vía archivo
+        return self.cargar_enlace_desde_txt()
 
     # ---------- Comunicación con Esclavo por TCP ----------
     def llamar_esclavo(
